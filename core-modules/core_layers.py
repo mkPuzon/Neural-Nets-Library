@@ -1,4 +1,4 @@
-'''layers.py
+'''core_layers.py
 
 Conatains the general layer classes for building neural networks.
 
@@ -30,7 +30,6 @@ from abc import ABC, abstractmethod
 
 class Layer(ABC):
     '''Abstract parent class for all neural network layers.'''
-    
     def __init__(self, layer_name, activation, prev_section, do_batch_norm=False,
                  batch_norm_momentum=0.99, do_layer_norm=False):
         self.layer_name = layer_name
@@ -59,11 +58,11 @@ class Layer(ABC):
         self.ln_gain = None
         self.ln_bias = None
         
-    def get_name(self):
+    def get_name(self) -> str:
         '''Returns the human-readable string name of this Layer.'''
         return self.layer_name
     
-    def get_act_func_name(self):
+    def get_act_func_name(self) -> str:
         '''Returns the string name of the activation function used in this Layer.'''
         return self.activation_name
     
@@ -79,11 +78,11 @@ class Layer(ABC):
         '''Returns the bias of the current layer'''
         return self.b
 
-    def get_mode(self):
+    def get_mode(self) -> bool:
         '''Returns whether the Layer is in a training state.'''
         return self.is_training
 
-    def set_mode(self, is_training):
+    def set_mode(self, is_training) -> None:
         '''Informs the layer whether the neural network is currently training.
 
         Parameters:
@@ -94,7 +93,7 @@ class Layer(ABC):
         # need to use .assign() not = operator!
         self.is_training.assign(is_training)
         
-    def compute_net_acts(self, net_in):
+    def compute_net_acts(self, net_in) -> tf.constant:
         '''Computes the activation for this Layer baed on the given net_in values.
         
         Parameters:
@@ -117,7 +116,7 @@ class Layer(ABC):
         else:
             raise ValueError(f"Unsupported activation function: {self.activation_name}")
 
-    def __call__(self, x):
+    def __call__(self, x) -> tf.constant:
         '''Does a forward pass through this Layer with the given mini-batch, x.
         
         Parameters:
@@ -157,7 +156,7 @@ class Layer(ABC):
             
         return net_act
     
-    def get_params(self):
+    def get_params(self) -> list:
         '''Returns a list of all the parameters learned by this Layer.'''
         params = []
         
@@ -269,7 +268,7 @@ class Layer(ABC):
     
     @abstractmethod
     def has_wts(self):
-        '''Does the current layer store weights? By default, we assume it does not (i.e. always return False).'''
+        '''Returns if this Layer has weights.'''
         raise NotImplementedError
     
     @abstractmethod
@@ -287,19 +286,187 @@ class Layer(ABC):
         '''Computes the batch norm based on the given net_in.'''
         raise NotImplementedError
     
+    @abstractmethod
+    def __str__(self):
+        '''A nicely formatted string representing this Layer'''
+        raise NotImplementedError
 
 # --------------- CORE ML LAYERS --------------- #
 
-# class Dense(Layer):
+class Dense(Layer):
+    '''Neural network layer that uses dense net input.'''
+    def __init__(self, name, units, prev_section, activation="relu", 
+                 do_batch_norm=False, do_layer_norm=False) -> None:
+        '''Dense layer constructor.
+        
+        Parameters:
+        -----------
+        name: str.
+            Human-readable name for this Layer; used for printing and debugging.
+        units: int.
+            Number of units in the layer (H).
+        activation: str.
+            Name of activation function to apply within this Layer.
+        prev_section: Layer.
+            Reference to the Layer object beneath this Layer.
+        do_batch_norm: bool.
+            Whether to do batch normalization in this Layer.
+        do_layer_norm: bool.
+            Whether to do layer normalization in this Layer.
+        '''
+        super().__init__(layer_name=name,
+                         activation=activation,
+                         prev_section=prev_section,
+                         do_batch_norm=do_batch_norm,
+                         do_layer_norm=do_layer_norm)
+        self.num_units = units
+        
+    def has_wts(self) -> bool:
+        return True
     
+    def init_params(self, input_shape) -> None:
+        '''Initializes the Dense layer's weights and biases.
+        
+        Parameters:
+        -----------
+        input_shape: list.
+            The shape of the input that the layer will process (B, M).
+        '''
+        B = input_shape[0]
+        M = input_shape[-1]
+        H = self.num_units
+        
+        bias_trainable = (not self.is_using_batch_norm()) or (not self.is_using_layer_norm)
+        # always use He weight intialization
+        stdev = self.get_kaiming_gain() / tf.math.sqrt(float(M))
+        self.wts = tf.Variable(tf.random.normal(shape=(M, self.num_units), stddev=stdev),
+                               name=self.layer_name.replace(" ", "_").replace("/", "_") + "_wts",
+                               trainable=True)
+        self.b = tf.Variable(tf.zeros(shape=(H)),
+                             name=self.layer_name.replace(" ", "_").replace("/", "_") + "_bias",
+                             trainable=(bias_trainable)) 
+                             # only use bias if not doing batch/layer norm
 
-# class Dropout(Layer):
+    def compute_net_input(self, x):
+        '''Calculates the net input for this Dense layer.
+        
+        Parameters:
+        -----------
+        x: tf.constant. tf.float32s. shape=(B, M)
+            Input from the previous layer in the network.
+            
+        Returns:
+        --------
+        net_in: tf.constant. tf.float32s. shape=(B, H)
+            The net input for this Layer.
+        '''
+        # uses lazy initialization
+        if self.wts is None:
+            self.init_params(input_shape=x.shape)
+        return x @ self.wts + self.b
     
+    def compute_batch_norm(self, net_in, eps=0.001):
+        '''Computes batch normalization for Dense layers.
+        
+        Parameters:
+        -----------
+        net_in: tf.constant. tf.float32s. shape=(B, H)
+            The net input computed on the current mini-batch.
+        eps: float.
+            A small number to prevent division by 0 when standardizing net_in.
+            
+        Returns:
+        --------
+        net_in_bn: tf.constant. tf.float32. shape=(B, H)
+            The net_in standardized according to the batch norm algorithm.
+        '''
+        if not self.do_batch_norm:
+            raise ValueError(f"self.do_batch_norm is False, for layer {self.layer_name}. Either should not be calling compute_batch_norm or do_batch_norm parameter is initialized incorrectly.")
+
+        if self.is_training: # use current batch statistics if training net 
+            # compute batch mean and standard deviation
+            cur_batch_mean = tf.reduce_mean(input_tensor=net_in, axis=0, keepdims=True)
+            cur_batch_stdev = tf.math.reduce_std(input_tensor=net_in, axis=0, keepdims=True)
+
+            net_in_j = (net_in - cur_batch_mean) / (cur_batch_stdev + eps)
+        else: # use moving averages if doing  prediction/testing
+            net_in_j = (net_in - self.bn_mean) / (self.bn_stdev + eps)
+        
+        # update moving averages if in training mode
+        if self.is_training: 
+            self.bn_mean.assign(self.batch_norm_momentum * self.bn_mean + (1 - self.batch_norm_momentum) * cur_batch_mean)
+            self.bn_stdev.assign(self.batch_norm_momentum * self.bn_stdev + (1 - self.batch_norm_momentum) * cur_batch_stdev)
+            
+        return self.bn_gain * net_in_j + self.bn_bias
+            
+    def __str__(self):
+        '''This Layer's method to print a nicely formated representation of itself.'''
+        return f"Dense layer '{self.layer_name}' | output_shape: {self.output_shape}"
+
+class Dropout(Layer):
+    '''Neural network layer which zeros out a proportion of the net_in signals; prevents overfitting.'''
+    def __init__(self, name, rate, prev_section) -> None:
+        '''Dropout layer constructor.
+        
+        Parameters:
+        -----------
+        name: str.
+            Human-readable name for the this Layer; used for debugging and printing.
+        rate: float.
+            Proportion between 0.0 and 1.0 of net_in signals to drop within each mini-batch.
+        prev_section: Layer.
+            Reference to the Layer below this one.
+        '''
+        super().__init__(layer_name=name, 
+                         activation="linear",
+                         prev_section=prev_section)
+        self.dropout_rate = rate
+        
+    def compute_net_input(self, x):
+        '''Somputes net_in for this Dropout layer.
+        
+        Parameters:
+        -----------
+        x: tf.constant. tf.float32s. shape=(B, ...)
+            Input from the Layer below this one; can be of any dimention.
+            
+        Returns:
+        --------
+        net_in: tf.constant, tf.float32s. shape=(B, ...)
+            The net input with proportion zeroed out.
+        '''
+        # pass all data through if not training
+        if not self.is_training:
+            net_in = x
+        else: # if network is training
+            mask = tf.random.uniform(tf.shape(x), dtype=x.dtype)
+            # convert to binary mask
+            mask = tf.where(mask >= self.dropout_rate, 1.0, 0.0)
+            # apply mask
+            net_in = x * mask
+            # scale so total net_in values are similar in training and testing
+            net_in = net_in * tf.cast(1.0 / (1.0 - self.dropout_rate), x.dtype)
+        
+        return net_in
+
+    def has_wts(self):
+        return False
     
-# class Flatten(Layer):
+    def init_params(self, input_shape):
+        raise TypeError(f"Dropout layer does not have params.")
     
+    def compute_batch_norm(self, net_in, eps=0.001):
+        raise TypeError(f"Dropout layer cannot implement batch norm.")
     
-# class MaxPool2D(Layer):
+    def __str__(self):
+        '''This Layer's method to print a nicely formated representation of itself.'''
+        return f"Dropout layer '{self.layer_name}' | output_shape: {self.output_shape}"
     
+class Flatten(Layer):
+    pass
     
-# class Conv2D(Layer):
+class MaxPool2D(Layer):
+    pass
+    
+class Conv2D(Layer):
+    pass
