@@ -17,8 +17,8 @@ R : dropout rate
 D : number of color channels
 T : length of sequence processed by a transformer
 A : number of attention heads
-I_y, I_x : image dimentions
-F_y, F_x : filter dimentions (conv2d)
+Iy, Ix : image dimentions
+Fy, Fx : filter dimentions (conv2d)
 
 ========================
 

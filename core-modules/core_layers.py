@@ -11,14 +11,16 @@ N : number of samples / number of tokens in corpus
 B : mini-batch size
 M : number of features / number of tokens in vocab
 C : number of classes
-k : number of filters (conv2d)
+K : number of filters (conv2d)
+    K1: number of filters/units in previous layer
+    K2: number of filters/units in current layer
 H : number of hidden units (dense) / embedding dimention
 R : dropout rate
 D : number of color channels
 T : length of sequence processed by a transformer
 A : number of attention heads
-I_y, I_x : image dimentions
-F_y, F_x : filter dimentions (conv2d)
+Iy, Ix : image dimentions
+Fy, Fx : filter dimentions (conv2d)
 
 ========================
 
@@ -463,10 +465,193 @@ class Dropout(Layer):
         return f"Dropout layer '{self.layer_name}' | output_shape: {self.output_shape}"
     
 class Flatten(Layer):
-    pass
+    '''A neural network layer that flattens out all non-batch dimentions of its input.'''
+    def __init__(self, name, prev_section):
+        '''Flatten Layer constructor.
+        
+        Parameters:
+        -----------
+        name: str.
+            Human-readable name for the current layer.
+        prev_section: Layer.
+            Reference to the Layer object below this one.
+        '''
+        super().__init__(layer_name=name, activation="linear", prev_section=prev_section)
+
+    def compute_net_input(self, x) -> tf.constant:
+        '''Computes the net input for this Flatten layer.
+        
+        Parameters:
+        -----------
+        x. tf.constant. tf.float32s. shape=(B, ...)
+            Input from the Layer below this one. Generally from a Conv2d block, so shape
+            is usually (B, Iy, Ix, K).
+            
+        Returns:
+        --------
+        tf.constant. tf.float32s. shape(B, F)
+            The net_in. `F` here is the product of all the dimentions of x after the batch dim.
+        '''
+        return tf.reshape(x, (tf.shape(x)[0], -1))
+
+    def has_wts(self) -> bool:
+        return False
+    
+    def init_params(self, input_shape):
+        raise TypeError(f"Flatten layer does not have params.")
+    
+    def compute_batch_norm(self, net_in, eps=0.001):
+        raise TypeError(f"Flatten layer cannot implement batch norm.")
+    
+    def __str__(self):
+        '''This Layer's method to print a nicely formated representation of itself.'''
+        return f"Flatten layer '{self.layer_name}' | output_shape: {self.output_shape}"
+    
     
 class MaxPool2D(Layer):
-    pass
+    '''A neural network layer which applies MaxPooling to its inputs.'''
+    def __init__(self, name, prev_section, pool_size=(2,2), strides=1, padding='VALID'):
+        '''Max pooling layer constructor.
+        
+        Parameters:
+        -----------
+        name: str.
+            Human-readable string.
+        pool_size. tuple. len(pool_size)=2.
+             The horizontal and verticle size of the pooling window.
+        strides. int.
+            the horizontal and verticle stride of the maxpooling operation.
+        prev_section: Layer.
+            Reference to the Layer object that is beneath this one.
+        padding: str.
+            Whether or not to pad a single input signal before performing max pooling,
+            supported options: "VALID", "SAME".
+           '''
+        super().__init__(layer_name=name, activation="linear", prev_section=prev_section)
+        self.pool_size = pool_size
+        self.strides = strides
+        self.padding = padding
+        
+    def compute_net_input(self, x) -> tf.constant:
+        '''Computes the net input for the current Maxpool2D layer.
+        
+        Parameters:
+        -----------
+        x: tf.constatnt. tf.float32s. shape=(B, Iy, Ix, K1).
+            Input from the layer beneath this one. Should be 4D; K1 refers to the
+            number of units/filters in the previous lauer.
+        
+        Returns:
+        --------
+        net_in: tf.constant. tf.float32. shape=(B, Iy, Ix, K2).
+            The net input; K2 refers to the number of units/filters in the current layer.
+        '''
+        return tf.nn.max_pool2d(input=x, ksize=self.pool_size, strides=self.strides, padding=self.padding)
+                 
+    def has_wts(self) -> bool:
+        return False
     
+    def init_params(self, input_shape):
+        raise TypeError(f"MaxPool2D layer does not have params.")
+    
+    def compute_batch_norm(self, net_in, eps=0.001):
+        raise TypeError(f"MaxPool2D layer cannot implement batch norm.")
+    
+    def __str__(self):
+        '''This Layer's method to print a nicely formated representation of itself.'''
+        return f"MaxPool2D layer '{self.layer_name}' | output_shape: {self.output_shape}"
+
 class Conv2D(Layer):
-    pass
+    '''A neural network that performs a 2D convolution operation on the given input.'''
+    def __init__(self, name, units, prev_section, kernel_size=(1,1), strides=1, activation="relu", 
+                 do_batch_norm=False, do_layer_norm=False):
+        '''Conv2D layer constructor.'''
+        super().__init__(layer_name=name, activation=activation, prev_section=prev_section,
+                         do_batch_norm=do_batch_norm, do_layer_norm=do_layer_norm)
+        self.num_units = units
+        self.kernel_size = kernel_size
+        self.strides = strides
+
+    def has_wts(self) -> bool:
+        return True
+    
+    def init_params(self, input_shape) -> None:
+        '''Initializes the Conv2D layer's weights and biases.
+        
+        Parameters:
+        -----------
+        input_shape: list. len(input_shape)=4.
+            The shape of mini-batched of input passed to this Layer, shape=(B, Iy, Ix, K1).
+            K1 is the number of units/filters in the previous layer.
+        '''
+        Fy, Fx = self.kernel_size
+        K1 = input_shape[-1]
+        
+        # always use He wt initialization
+        std = self.get_kaiming_gain() / tf.math.sqrt(float(K1*Fy*Fx))
+        self.wts = tf.Variable(tf.random.normal(shape=(Fy, Fx, K1, self.num_units), stddev=std),
+                                name=self.layer_name.replace(" ", "_").replace("/", "_") + "_wts",
+                                trainable=True)
+        self.b = tf.Variable(tf.zeros(shape=(self.num_units)),
+                                name=self.layer_name.replace(" ", "_").replace("/", "_") + "_bias",
+                                trainable=(not self.is_doing_batchnorm()))
+    
+    def compute_net_input(self, x):
+        '''Computes the net input for this Conv2D layer using SAME boundary conditions.
+        
+        Parameters:
+        -----------
+        x: tf.constant. tf.float32s. shape=(B, Iy, Ix, K1).
+            Input from Layer beneath this one.
+            
+        Returns:
+        --------
+        net_in: tf.constant. tf.float32s. shape=(B, Iy, Ix, K2).
+            The net input for this Conv2D layer.
+        '''
+        # use lazy initialization
+        if self.wts is None:
+            self.init_params(input_shape=x.shape)
+        
+        return tf.nn.conv2d(input=x, filters=self.wts, strides=self.strides, padding="SAME") + self.b
+    
+    def compute_batch_norm(self, net_in, eps=0.001):
+        '''Computes the batch normalization for a Conv2D layer.
+        
+        Parameters:
+        -----------
+        net_in: tf.constant. tf.float32s. shape=(B, Iy, Ix, K).
+            The net input computed on the current mini-batch.
+        eps: float.
+            A small value to prevent division by 0 when standardizing net_in.
+            
+        Returns:
+        --------
+        net_in_bn: tf.constant. tf.float32. shape=(B, Iy, Ix, K).
+            The net_in, standardized according to the batch norm algorithm.
+        '''
+        if not self.do_batch_norm:
+            raise ValueError(f"self.do_batch_norm is False for layer {self.layer_name}. Either should not be calling compute_batch_norm or do_batch_norm parameter is initialized incorrectly.")
+        
+        # compute batch statistics
+        cur_batch_mean = tf.reduce_mean(net_in, axis=[0,1,2], keepdims=True)
+        cur_batch_stddev = tf.math.reduce_std(net_in, axis=[0,1,2], keepdims=True)
+        
+        # compute netIns for all neurons in layer
+        if self.is_training:
+            net_in_j = (net_in - cur_batch_mean) / (cur_batch_stddev + eps)
+        else: # testing/prediction
+            net_in_j = (net_in - self.bn_mean) / (self.bn_stdev + eps)
+            
+        # update moving averages if training
+        if self.is_training:
+            self.bn_mean.assign(self.batch_norm_momentum * self.bn_mean + (1 - self.batch_norm_momentum) * cur_batch_mean)
+            self.bn_stdev.assign(self.batch_norm_momentum * self.bn_stdev + (1 - self.batch_norm_momentum) * cur_batch_stddev)
+            
+        # apply learned shift and scaling
+        net_in_bn = self.bn_gain * net_in_j + self.bn_bias
+        return net_in_bn
+    
+    def __str__(self):
+        '''This Layer's method to print a nicely formated representation of itself.'''
+        return f"Conv2D layer '{self.layer_name}' | output_shape: {self.output_shape}"
