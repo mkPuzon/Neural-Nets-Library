@@ -4,18 +4,22 @@ Holds class to build a basic CNN network.
 
 MKP - August 2025
 '''
+import time
 import tensorflow as tf
 
 from neural_net_base import NeuralNetwork
+from utils import save_model_wts, create_callbacks_from_config, get_optimizer
 
 class CNN(NeuralNetwork):
-    def __init__(self, net_params):
-        self.params = net_params
-        self.name = self.params.get('model_name', 'cnn')
+    def __init__(self, params):
+        self.params = params
+        self.name = params.get('model_name', 'cnn')
         self.net = None
         print(f"Initialized model '{self.name}'.")
 
     def build_model(self, data_params, print_summary=False):
+        self.data_params = data_params
+        
         input_layer = tf.keras.Input(shape=data_params['input_shape'])
         x = input_layer
 
@@ -43,6 +47,41 @@ class CNN(NeuralNetwork):
         if print_summary:
             self.net.summary()
             
+    def fit_model(self, x_train, y_train, x_val, y_val, save_wts=False, verbose=False):
+        optimizer = get_optimizer(self.params)
+        
+        self.net.compile(
+            optimizer=optimizer,
+            loss=self.params["loss"],
+            metrics=self.params["metrics"]
+        )
+        
+        if verbose:
+            self.net.summary()
+            
+        # ---- Callbacks ---- #
+        callbacks_list = create_callbacks_from_config(self.params, verbose=verbose)
+        
+        # ---- Training ---- # 
+        st = time.time()
+        history = self.net.fit(
+            x_train, y_train,
+            validation_data=(x_val, y_val) if x_val is not None else None,
+            epochs=self.params["max_epochs"],
+            batch_size=self.data_params["minibatch_sz"],
+            shuffle=self.data_params.get("shuffle", True),
+            callbacks=callbacks_list,
+            verbose=verbose
+        )
+        training_duration_seconds = time.time() - st
+        if verbose:
+            print(f"Training took {training_duration_seconds:.2f} seconds.")
+        
+        if save_wts:
+            save_model_wts(model=self.net, data_name=self.data_params['dataset_name'], history=history, training_duration_seconds=training_duration_seconds)
+        
+        return history
+        
     # -------- HELPER FUCTIONS -------- #
     def add_conv2d_block(self, x, layer_cfg):
         x = tf.keras.layers.Conv2D(
@@ -82,9 +121,9 @@ class CNN(NeuralNetwork):
         return output_layers
     
 class MLP(NeuralNetwork):
-    def __init__(self, net_params):
-        self.params = net_params
-        self.name = self.params.get('model_name', 'mlp')
+    def __init__(self, params):
+        self.params = params
+        self.name = params.get('model_name', 'mlp')
         self.net = None
         print(f"Initialized model '{self.name}'.")
 
