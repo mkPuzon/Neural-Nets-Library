@@ -1,0 +1,46 @@
+# Base CNN network params #
+#                         #
+# MKP - August 2025       #
+
+# ---- General training ---- #
+seed: 0
+max_epochs: 50
+batch_size: 32
+shuffle: true
+activation: relu
+output_activation: softmax
+
+# ---- Optimizer settings ---- #
+optimizer:
+  type: adamw
+  learning_rate: 0.001
+  weight_decay: 0.0001
+
+# ---- Model architecture ---- #
+model:
+  type: CNN
+  num_classes: 10
+
+  num_conv_stacks: 1
+  num_conv_layers: 2
+  kernel_size: [3]
+  num_filters: [32, 64]
+
+  pool_size: [2, 2]
+  
+  num_dense_blocks: 1
+  num_dense_layers: 1
+  num_hidden_units: 128
+
+  dropout_rate: 0.0
+
+# ---- Callbacks ---- #
+callbacks:
+  early_stopping:
+    monitor: val_loss
+    patience: 5
+    restore_best_weights: true
+  model_checkpoint:
+    filepath: "checkpoints/model_best.h5"
+    save_best_only: true
+    monitor: val_accuracy
