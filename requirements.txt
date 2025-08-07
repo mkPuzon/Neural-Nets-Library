@@ -1,5 +1,6 @@
-# Uses Python 3.11 (3.10 should also work)
-# data science packages
+# Uses Python 3.11 (3.10 should also work but not well tested)
+
+# ---- data science packages ---- #
 numpy==2.1.3
 scipy==1.15.3
 pandas==2.2.3
@@ -8,7 +9,12 @@ matplotlib==3.10.3
 jupyter==1.1.1
 scikit-learn==1.6.1
 certifi==2025.4.26
-# core machine learning
-tensorflow==2.19.0
-# optional
+
+# ---- core machine learning  ---- #
+tensorflow[and-cuda]==2.19.0 # utilize GPU if using WSL
+
+# ---- miscellaneous ---- #
+pyyaml
+
+# ---- optional ---- #
 datasets
