@@ -42,7 +42,7 @@ class CNN(NeuralNetwork):
         else:
             raise ValueError("Model config must define either 'output_layer' or 'multi_output_layers'")
 
-        self.net = tf.keras.Model(inputs=input_layer, outputs=outputs)
+        self.net = tf.keras.Model(inputs=input_layer, outputs=outputs, name=self.name)
         
         if print_summary:
             self.net.summary()
