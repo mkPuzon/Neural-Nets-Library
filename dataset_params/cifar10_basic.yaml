@@ -1,0 +1,25 @@
+dataset_name: cifar10
+source: keras.datasets.cifar10
+input_shape: [32, 32, 3]
+num_classes: 10
+output_labels: 
+  - airplane
+  - automobile
+  - bird
+  - cat
+  - deer
+  - dog
+  - frog
+  - horse
+  - ship
+  - truck
+
+normalize: true
+flatten: false
+shuffle: true
+validation_split: 0.2
+
+augmentation:
+  use: false
+
+minibatch_sz: 128

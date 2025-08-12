@@ -1,0 +1,42 @@
+model_name: base_cnn_1
+
+# ---- Architecture ---- #
+conv_layers:
+  - {filters: 32, kernel_size: [3, 3], activation: relu}
+
+dense_layers:
+  - {units: 128, activation: relu, dropout_rate: 0.25}
+
+output_layer:
+  activation: softmax
+
+# ---- Compilation ---- #
+optimizer:
+  type: adamw
+  learning_rate: 0.001
+
+loss: sparse_categorical_crossentropy
+metrics: [accuracy]
+
+# ---- Training ---- #
+max_epochs: 500
+patience: 10
+
+# ---- Callbacks ---- #
+callbacks:
+  early_stopping:
+    monitor: 'val_loss'
+    patience: 10
+    restore_best_weights: true
+
+  model_checkpoint:
+    filepath: 'checkpoints/model_{epoch:02d}.weights.h5'
+    monitor: 'val_loss'
+    save_best_only: true
+    save_weights_only: true
+
+  reduce_lr_on_plateau:
+    monitor: 'val_loss'
+    factor: 0.1
+    patience: 5
+    min_lr: 0.00001

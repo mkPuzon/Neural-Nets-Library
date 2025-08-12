@@ -1,0 +1,12 @@
+dataset_name: california_housing
+source: keras.datasets.california_housing
+task_type: regression
+
+input_shape: [8]
+output_labels: ['median_house_value']
+
+normalize: true
+shuffle: true
+validation_split: 0.2
+
+minibatch_sz: 128

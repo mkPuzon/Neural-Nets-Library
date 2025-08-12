@@ -1,0 +1,11 @@
+dataset_name: imdb
+source: keras.datasets.imdb
+task_type: binary_classification
+num_classes: 2
+output_labels: ['negative', 'positive']
+
+loader_params:
+  num_words: 10000
+
+shuffle: true
+validation_split: 0.4

@@ -1,0 +1,16 @@
+model_name: base_mlp
+
+dense_layers:
+  - {units: 64, activation: relu, dropout_rate: 0.2}
+  - {units: 32, activation: relu, dropout_rate: 0.0}
+    
+output_layer:
+  units: 1
+  activation: linear
+
+optimizer:
+  type: adamw
+  learning_rate: 0.001
+
+loss: mean_squared_error
+metrics: [mae]

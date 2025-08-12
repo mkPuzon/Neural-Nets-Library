@@ -2,6 +2,7 @@ dataset_name: mnist
 source: keras.datasets.mnist
 input_shape: [28, 28, 1]
 num_classes: 10
+output_labels: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
 
 normalize: true
 flatten: false
@@ -10,3 +11,5 @@ validation_split: 0.1
 
 augmentation:
   use: false
+
+minibatch_sz: 128
