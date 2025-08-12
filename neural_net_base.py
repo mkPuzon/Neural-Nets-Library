@@ -93,7 +93,7 @@ class NeuralNetwork:
     def get_layer_activations(self, x, split, match_str=None, exclude_input_layer=True, exclude_output_layer=True):
         pass
 
-    def fit(self, data, max_epochs=5000, verbose=2, patience=10, minibatch_sz=None):
+    def fit(self, verbose):
         pass
 
     def predict(self, x_test):

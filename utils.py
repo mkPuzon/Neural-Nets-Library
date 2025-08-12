@@ -200,31 +200,6 @@ def create_run_directory(model_name="model", data_name="data"):
     print(f"Model stored in directory: {run_path}")
     
     return run_path
-
-def save_model_wts(model, data_name, history, training_duration_seconds):
-    run_path = create_run_directory(model_name=model.name, data_name=data_name)
-
-    # Save model weights
-    weights_path = os.path.join(run_path, f"{model.name}.weights.h5")
-    model.save_weights(weights_path)
-    print(f"Saved model weights to: {weights_path}")
-
-    # Prepare history dictionary for JSON serialization
-    history_dict = {key: [float(i) for i in val] for key, val in history.history.items()}
-
-    # Save training results as a JSON file
-    results = {
-        "dataset": data_name,
-        "epochs_trained": len(history_dict['loss']),
-        "training_duration_seconds": round(training_duration_seconds, 2),
-        "final_loss": history_dict['loss'][-1],
-        "history": history_dict
-    }
-
-    results_path = os.path.join(run_path, "results.json")
-    with open(results_path, 'w') as f:
-        json.dump(results, f, indent=4)
-    print(f"Saved training results to: {results_path}")
     
     
 def load_json_results(name, base_path="/home/mkpuzon/code/Neural-Nets-Library/training_runs/", print_results=False):
@@ -286,3 +261,11 @@ def get_optimizer(params):
             raise NotImplementedError(f"Optimizer {opt_config['type']} not implemented.")
         
         return optimizer
+
+def get_model_type(model_name):
+    if "cnn" in model_name.lower():
+        return 'cnn'
+    elif "mlp" in model_name.lower():
+        return 'mlp'
+    else:
+        raise ValueError(f"Unknown model type: {model_name}")
