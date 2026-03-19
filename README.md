@@ -18,11 +18,3 @@ Examples of how to build and train networks are included in the `basics.ipynb` n
 Customize, train, test, and inspect neural networks on a varity of datasets. Easy to use for a multitude of tasks including classification, regression, and multi-output regressions.
 
 ## TO-DOs
-- [ ] Test variations of base_cnns on CIFAR-10 to develop testing pipline/scripts
-- [ ] Load in optic flow data
-- [ ] Test & debug MLP class
-- [ ] Create example notebook sections for classification, regression, and multi-output regressions
-- [ ] Add option for batch norm
-- [ ] Add option for layer norm
-
-- [ ] Neuron activation analysis visualizations (img -> mp4 pipeline) 

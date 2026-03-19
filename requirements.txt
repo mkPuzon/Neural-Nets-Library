@@ -14,9 +14,3 @@ certifi==2025.4.26
 tensorflow[and-cuda]==2.19.0 # utilize GPU if using WSL
 tensorflow_datasets
 keras>=3.11.1
-
-# ---- miscellaneous ---- #
-pyyaml
-
-# ---- optional ---- #
-datasets
