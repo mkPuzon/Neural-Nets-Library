@@ -137,14 +137,19 @@ class Dense(Layer):
         M = input_shape[-1]
         
         if self.wt_init == "normal":
-            pass
+            self.wts = tf.Variable(tf.random.normal(shape=(input_shape[-1], self.num_units), stddev=self.wt_scale))
+            self.b = tf.Variable(tf.random.normal(shape=(self.num_units,), stddev=self.wt_scale))
         elif self.wt_init == "he":
-            pass
+            std = self.get_kaiming_gain() / tf.math.sqrt(float(M)) 
+            self.wts = tf.Variable(tf.random.normal(shape=(M, self.num_units), stddev=std))
+            self.b = tf.Variable(tf.zeros(shape=(self.num_units)))
         else:
             raise ValueError(f"Cannot initialize parameters with wt_init method {self.wt_init}")
 
     def compute_net_in(self, x):
-        pass
+        if self.wts is None:
+            self.init_params(input_shape=x.shape)
+        return x @ self.wts + self.b
 
     def compute_bn(self, net_in, eps=0.001):
         # TODO
