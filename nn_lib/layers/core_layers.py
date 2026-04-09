@@ -1,32 +1,24 @@
+'''core_layer.py
+
+Standard layers for basic MLPs and CNNS.
+
+Apr 2026
+'''
 import tensorflow as tf
 
 class Layer:
     '''Parent class for all network layers. Implements shared functionality common across all layers.'''
 
-    def __init__(self, layer_name, activation, prev_layer, do_bn=False, bn_momentum=0.99, do_ln= False):
+    def __init__(self, layer_name, activation, prev_layer=None):
         self.layer_name = layer_name
         self.act_func = activation
         self.prev_layer = prev_layer
-        self.is_training = tf.Variable(False, trainable=True,
-                                       name=self.layer_name.replace("/", "_").replace(" ", "_") + "_is_training")
+        self.is_training = tf.Variable(False, trainable=False, name=self.layer_name + "_is_training")
 
-        # use lazy initialization on first call
+        # use lazy initialization to determine shapes on first call
         self.wts = None
         self.b = None
         self.output_shape = None
-
-        # batch norm params
-        self.do_bm = do_bn
-        self.bm_momentum = bn_momentum
-        self.bn_gain = None
-        self.bn_bias = None
-        self.bn_mean = None
-        self.bn_std = None
-        
-        # layer norm
-        self.do_ln = do_ln
-        self.ln_gain = None
-        self.ln_bias = None
 
     def get_name(self):
         return self.layer_name
@@ -53,14 +45,8 @@ class Layer:
             params.append(self.wts)
         if self.b is not None and self.b.trainable:
             params.append(self.b)
-        if self.bn_gain is not None:
-            params.append(self.bn_gain)
-        if self.bn_bias is not None:
-            params.append(self.bn_bias)
-        if self.ln_gain is not None:
-            params.append(self.ln_gain)
-        if self.ln_bias is not None:
-            params.append(self.ln_bias)
+
+        return params
 
     def get_kaiming_gain(self):
         if self.act_func == "relu":
@@ -78,27 +64,6 @@ class Layer:
     def has_wts(self):
         return False
 
-    def is_doing_bn(self):
-        return self.is_doing_bn
-    
-    def init_bn_params(self):
-        # TODO
-        pass
-        
-    def compute_bn(self, net_in, eps=0.001):
-        pass
-
-    def init_ln_params(self, x):
-        # TODO
-        pass
-
-    def compute_ln(self, x, eps=0.001):
-        # TODO
-        pass
-        
-    def init_params(self, input_shape):
-        pass
-
     def compute_net_in(self, x):
         pass
 
@@ -110,7 +75,7 @@ class Layer:
         elif self.act_func == "softmax":
             return tf.nn.softmax(net_in)
         else:
-            raise ValueError(f"Unknown activation function {self.act_func}jk")
+            raise ValueError(f"Unknown activation function {self.act_func}")
 
     def __call__(self, x):
         net_in = self.compute_net_in(x=x)
@@ -119,19 +84,22 @@ class Layer:
         # store output shape on first call
         if self.output_shape is None:
             self.output_shape = list(net_act.shape)
+        
+        return net_act
+
+    def __repr__(self):
+        return f"{self.layer_name}"
 
 class Dense(Layer):
     
-    def __init__(self, name, units, activation="relu", wt_scale=1e3, prev_layer=None,
-                 wt_init="normal", do_bn=False, do_ln=False):
-        super().__init__(layer_name=name, activation=activation, prev_layer=prev_layer,
-                         do_bn=do_bn, do_ln=do_ln)
+    def __init__(self, name, units, activation="relu", wt_scale=1e3, prev_layer=None, wt_init="normal"):
+        super().__init__(layer_name=name, activation=activation, prev_layer=prev_layer)
         self.num_units = units
         self.wt_scale = wt_scale
         self.wt_init = wt_init.lower()
         
     def has_wts(self):
-        return True
+        return True 
 
     def init_params(self, input_shape):
         M = input_shape[-1]
@@ -152,5 +120,32 @@ class Dense(Layer):
         return x @ self.wts + self.b
 
     def compute_bn(self, net_in, eps=0.001):
-        # TODO
-        pass
+        if not self.do_bn:
+            raise ValueError(f"self.do_bn is False, for layer {self.layer_name}. Either should not be calling compute_bn or do_bn parameter is initialized incorrectly.")
+
+        # compute batch statistics
+        cur_batch_mean = tf.reduce_mean(net_in, axis=0, keepdims=True)
+        cur_batch_std = tf.math.reduce_std(net_in, axis=0, keepdims=True)
+
+        # compute net_in for all neurons in layer
+        if self.is_training:
+            net_in_j = (net_in - cur_batch_mean) / (cur_batch_std + eps)
+        else:
+            net_in_j = (net_in - self.bn_mean) / (self.bn_std + eps)
+
+        # update moving averages if training
+        if self.is_training:
+            self.bn_mean.assign(self.bn_momentum * self.bn_mean + (1 - self.bn_momentum) * cur_batch_mean)
+            self.bn_std.assign(self.bn_momentum * self.bn_std + (1 - self.bn_momentum) * cur_batch_std)
+
+        # apply shift and scaling
+        net_in_bn = self.bn_gain * net_in_j + self.bn_bias
+
+        return net_in_bn
+
+    def __str__(self):
+        return f"Dense layer ({self.layer_name}) shape: {self.output_shape}"
+
+    def __repr__(self):
+        return f"Dense(name={self.layer_name}, activation={self.act_func}, wt_scale={self.wt_scale}, prev_layer={self.prev_layer}, \
+        wt_init={self.wt_init}, do_bn={self.do_bn}, do_gn={self.do_gn})"
